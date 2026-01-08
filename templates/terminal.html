@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Terminal</title>
+    <title>Terminal</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <style>
         * {
@@ -51,6 +51,23 @@
             background-color: #1e1e1e;
         }
 
+        #logout-btn {
+            background: #2d2d30;
+            color: #cccccc;
+            border: 1px solid #3e3e42;
+            padding: 4px 12px;
+            font-size: 11px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.2s;
+        }
+
+        #logout-btn:hover {
+            background: #3e3e42;
+        }
+
         .status-connected {
             color: #4ec9b0;
         }
@@ -89,6 +106,7 @@
         <div id="terminal-header">
             <span id="terminal-title">Terminal</span>
             <span id="connection-status" class="status-disconnected">Connecting...</span>
+            <a href="/logout" id="logout-btn">Logout</a>
         </div>
         
         <div id="terminal"></div>

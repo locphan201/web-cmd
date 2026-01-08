@@ -1,5 +1,6 @@
-from flask import Flask, render_template, session
+from flask import Flask, render_template, session, request, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room
+from functools import wraps
 import paramiko
 import os
 import secrets
@@ -11,9 +12,21 @@ app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
 
+# Set your password here or use environment variable
+ACCESS_PASSWORD = os.environ.get('TERMINAL_PASSWORD', 'admin123')
+
 # Store SSH connections per session
 ssh_clients = {}
 ssh_channels = {}
+
+def login_required(f):
+    """Decorator to require authentication for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def get_ssh_client(session_id):
     """Get or create SSH client for session"""
@@ -77,7 +90,24 @@ def read_channel_output(channel, session_id):
         if not channel.closed:
             socketio.emit('output', {'data': f'\r\nError reading output: {str(e)}\r\n'}, room=session_id)
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == ACCESS_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('index'))
+        else:
+            return render_template('login.html', error='Invalid password')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     # Generate unique session ID
     if 'session_id' not in session:
@@ -86,6 +116,10 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
+    # Check authentication
+    if not session.get('authenticated'):
+        return False
+    
     session_id = session.get('session_id')
     if not session_id:
         session['session_id'] = secrets.token_hex(16)
