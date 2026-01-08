@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Terminal</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #000000;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #terminal-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #000000;
+        }
+
+        #terminal-header {
+            background: linear-gradient(to bottom, #2d2d30, #1e1e1e);
+            padding: 8px 12px;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .window-button {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+
+        .close { background-color: #ff5f56; }
+        .minimize { background-color: #ffbd2e; }
+        .maximize { background-color: #27c93f; }
+
+        #terminal-title {
+            color: #cccccc;
+            font-size: 13px;
+            margin-left: 10px;
+            font-weight: normal;
+        }
+
+        #connection-status {
+            margin-left: auto;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background-color: #1e1e1e;
+        }
+
+        .status-connected {
+            color: #4ec9b0;
+        }
+
+        .status-disconnected {
+            color: #f48771;
+        }
+
+        #terminal {
+            flex: 1;
+            padding: 5px;
+            background-color: #000000;
+        }
+
+        .xterm {
+            height: 100%;
+            padding: 5px;
+        }
+
+        .xterm-viewport {
+            overflow-y: auto !important;
+        }
+
+        .error-message {
+            color: #f48771;
+            padding: 10px;
+            margin: 10px;
+            background-color: #2d1e1e;
+            border-left: 3px solid #f48771;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal-container">
+        <div id="terminal-header">
+            <button class="window-button close"></button>
+            <button class="window-button minimize"></button>
+            <button class="window-button maximize"></button>
+            <span id="terminal-title">Web Terminal (SSH)</span>
+            <span id="connection-status" class="status-disconnected">Connecting...</span>
+        </div>
+        
+        <div id="terminal"></div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+    <script>
+        const connectionStatus = document.getElementById('connection-status');
+        let socket = null;
+        let term = null;
+        let fitAddon = null;
+
+        // Initialize xterm.js terminal
+        function initTerminal() {
+            term = new Terminal({
+                cursorBlink: true,
+                cursorStyle: 'block',
+                fontFamily: '"Cascadia Code", Menlo, Monaco, "Courier New", monospace',
+                fontSize: 14,
+                fontWeight: 400,
+                fontWeightBold: 700,
+                lineHeight: 1.2,
+                letterSpacing: 0,
+                theme: {
+                    background: '#000000',
+                    foreground: '#ffffff',
+                    cursor: '#ffffff',
+                    cursorAccent: '#000000',
+                    selectionBackground: '#5DA5D533',
+                    selectionForeground: '#ffffff',
+                    black: '#000000',
+                    red: '#cd3131',
+                    green: '#0dbc79',
+                    yellow: '#e5e510',
+                    blue: '#2472c8',
+                    magenta: '#bc3fbc',
+                    cyan: '#11a8cd',
+                    white: '#e5e5e5',
+                    brightBlack: '#666666',
+                    brightRed: '#f14c4c',
+                    brightGreen: '#23d18b',
+                    brightYellow: '#f5f543',
+                    brightBlue: '#3b8eea',
+                    brightMagenta: '#d670d6',
+                    brightCyan: '#29b8db',
+                    brightWhite: '#ffffff'
+                },
+                allowProposedApi: true,
+                scrollback: 10000,
+                tabStopWidth: 8
+            });
+
+            // Add fit addon for responsive sizing
+            fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+
+            // Add web links addon
+            const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+            term.loadAddon(webLinksAddon);
+
+            // Open terminal in the DOM
+            term.open(document.getElementById('terminal'));
+            
+            // Fit terminal to container
+            fitAddon.fit();
+
+            // Handle terminal input
+            term.onData((data) => {
+                if (socket && socket.connected) {
+                    socket.emit('input', { data: data });
+                }
+            });
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+                updateTerminalSize();
+            });
+
+            // Initial size update
+            setTimeout(() => {
+                fitAddon.fit();
+                updateTerminalSize();
+            }, 100);
+        }
+
+        // Initialize Socket.IO connection
+        function initSocket() {
+            socket = io({
+                transports: ['websocket', 'polling']
+            });
+
+            socket.on('connect', () => {
+                console.log('Socket connected');
+            });
+
+            socket.on('connected', (data) => {
+                if (data.status === 'success') {
+                    connectionStatus.textContent = 'Connected';
+                    connectionStatus.className = 'status-connected';
+                } else {
+                    connectionStatus.textContent = 'Connection Failed';
+                    connectionStatus.className = 'status-disconnected';
+                    term.write('\r\n\x1b[1;31mConnection Failed:\x1b[0m ' + data.message + '\r\n');
+                    term.write('\r\n\x1b[1;33mPlease ensure:\x1b[0m\r\n');
+                    term.write('1. SSH server is running (sudo systemctl start sshd)\r\n');
+                    term.write('2. SSH keys are set up (ssh-keygen && ssh-copy-id localhost)\r\n');
+                    term.write('3. You can SSH to localhost without password\r\n');
+                }
+            });
+
+            socket.on('output', (data) => {
+                if (term) {
+                    term.write(data.data);
+                }
+            });
+
+            socket.on('disconnect', () => {
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'status-disconnected';
+                if (term) {
+                    term.write('\r\n\x1b[1;31m[Connection closed]\x1b[0m\r\n');
+                }
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                connectionStatus.textContent = 'Connection Error';
+                connectionStatus.className = 'status-disconnected';
+            });
+        }
+
+        function updateTerminalSize() {
+            if (socket && socket.connected && term) {
+                const dimensions = fitAddon.proposeDimensions();
+                if (dimensions) {
+                    socket.emit('resize', { 
+                        width: dimensions.cols, 
+                        height: dimensions.rows 
+                    });
+                }
+            }
+        }
+
+        // Initialize everything
+        initTerminal();
+        initSocket();
+    </script>
+</body>
+</html>
