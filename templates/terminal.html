@@ -36,18 +36,6 @@
             gap: 8px;
         }
 
-        .window-button {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
-        }
-
-        .close { background-color: #ff5f56; }
-        .minimize { background-color: #ffbd2e; }
-        .maximize { background-color: #27c93f; }
-
         #terminal-title {
             color: #cccccc;
             font-size: 13px;
@@ -99,10 +87,7 @@
 <body>
     <div id="terminal-container">
         <div id="terminal-header">
-            <button class="window-button close"></button>
-            <button class="window-button minimize"></button>
-            <button class="window-button maximize"></button>
-            <span id="terminal-title">Web Terminal (SSH)</span>
+            <span id="terminal-title">Terminal</span>
             <span id="connection-status" class="status-disconnected">Connecting...</span>
         </div>
         
